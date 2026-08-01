@@ -16,6 +16,47 @@
 
 如果必须把 Jenkins 安装在这台机器上，建议限制为单个执行器，并避免并发构建；Jenkins 本身仍需要 Java 21，但流水线构建不依赖宿主机 Maven。
 
+## 在这台服务器安装 Jenkins
+
+目标服务器是 Ubuntu 24.04，且 `8080` 已被现有服务占用。Jenkins 使用 Java 21，并改用 `18081` 端口：
+
+```bash
+sudo apt update
+sudo apt install -y fontconfig openjdk-21-jre wget
+
+sudo install -d -m 0755 /etc/apt/keyrings
+sudo wget -O /etc/apt/keyrings/jenkins-keyring.asc \
+  https://pkg.jenkins.io/debian-stable/jenkins.io-2026.key
+echo "deb [signed-by=/etc/apt/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/" \
+  | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
+
+sudo apt update
+sudo apt install -y jenkins
+sudo usermod -aG docker jenkins
+
+sudo systemctl edit jenkins
+```
+
+在打开的编辑器中写入：
+
+```ini
+[Service]
+Environment="JENKINS_PORT=18081"
+Environment="JAVA_OPTS=-Djava.awt.headless=true -Xms256m -Xmx512m"
+```
+
+保存后执行：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now jenkins
+sudo systemctl restart jenkins
+sudo systemctl status jenkins --no-pager
+sudo cat /var/lib/jenkins/secrets/initialAdminPassword
+```
+
+初始化地址为 `http://服务器IP:18081`。如果不准备开放公网端口，可以使用 SSH 本地端口转发访问。Jenkins 初次配置时安装推荐插件，并将执行器数量设置为 `1`。
+
 ## 服务器环境准备
 
 Jenkins Agent 所在环境需要确认：
@@ -56,6 +97,14 @@ sudo chmod 600 /opt/luntan/.env
 Jenkinsfile 默认从 `/opt/luntan/.env` 读取配置，不要求把 `.env` 放进 Git 或 Jenkins 工作区。如果 Jenkins Agent 使用 `jenkins` 用户，需要将该文件的读取权限授予它，例如：
 
 ```bash
+sudo chown jenkins:jenkins /opt/luntan/.env
+sudo chmod 600 /opt/luntan/.env
+```
+
+当前服务器上若已经把配置放在 `/root/luntan/.env`，安装 Jenkins 后可执行：
+
+```bash
+sudo mv /root/luntan/.env /opt/luntan/.env
 sudo chown jenkins:jenkins /opt/luntan/.env
 sudo chmod 600 /opt/luntan/.env
 ```
