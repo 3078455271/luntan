@@ -1,0 +1,10 @@
+target/*
+!**/target/
+!**/target/*.jar
+.m2/
+.git/
+.idea/
+.vscode/
+*.iml
+.env
+**/src/test/

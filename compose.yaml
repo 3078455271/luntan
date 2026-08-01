@@ -1,0 +1,149 @@
+name: luntan
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    mem_limit: ${MYSQL_MEMORY_LIMIT:-768m}
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_password}
+      IDENTITY_DB_PASSWORD: ${IDENTITY_DB_PASSWORD:-identity_password}
+      FORUM_DB_PASSWORD: ${FORUM_DB_PASSWORD:-forum_password}
+    ports:
+      - "${MYSQL_BIND_ADDRESS:-127.0.0.1}:${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks:
+      - luntan-net
+
+  redis:
+    image: redis:8.0-alpine
+    restart: unless-stopped
+    mem_limit: ${REDIS_MEMORY_LIMIT:-128m}
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$${REDIS_PASSWORD}\""]
+    ports:
+      - "${REDIS_BIND_ADDRESS:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $${REDIS_PASSWORD} ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks:
+      - luntan-net
+
+  identity-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        MODULE: identity-service
+    restart: unless-stopped
+    mem_limit: ${APP_MEMORY_LIMIT:-384m}
+    environment:
+      DB_URL: jdbc:mysql://mysql:3306/identity_db?useUnicode=true&characterEncoding=UTF-8&serverTimezone=UTC
+      DB_USERNAME: identity_app
+      DB_PASSWORD: ${IDENTITY_DB_PASSWORD:-identity_password}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
+      JWT_SECRET: ${JWT_SECRET:-change-this-development-secret-at-least-32-bytes}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-change-this-internal-service-token}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8081'"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+    networks:
+      - luntan-net
+
+  forum-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        MODULE: forum-service
+    restart: unless-stopped
+    mem_limit: ${APP_MEMORY_LIMIT:-384m}
+    environment:
+      DB_URL: jdbc:mysql://mysql:3306/forum_db?useUnicode=true&characterEncoding=UTF-8&serverTimezone=UTC
+      DB_USERNAME: forum_app
+      DB_PASSWORD: ${FORUM_DB_PASSWORD:-forum_password}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
+      JWT_SECRET: ${JWT_SECRET:-change-this-development-secret-at-least-32-bytes}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-change-this-internal-service-token}
+      IDENTITY_SERVICE_URL: http://identity-service:8081
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8082'"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+    networks:
+      - luntan-net
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        MODULE: api-gateway
+    restart: unless-stopped
+    mem_limit: ${APP_MEMORY_LIMIT:-384m}
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
+      JWT_SECRET: ${JWT_SECRET:-change-this-development-secret-at-least-32-bytes}
+      IDENTITY_SERVICE_URL: http://identity-service:8081
+      FORUM_SERVICE_URL: http://forum-service:8082
+    ports:
+      - "${GATEWAY_BIND_ADDRESS:-127.0.0.1}:${GATEWAY_PORT:-8080}:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+      forum-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8080'"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+    networks:
+      - luntan-net
+
+volumes:
+  mysql_data:
+  redis_data:
+
+networks:
+  luntan-net:
+    driver: bridge

@@ -1,0 +1,79 @@
+server:
+  port: 8080
+  shutdown: graceful
+
+spring:
+  application:
+    name: api-gateway
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2s
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: identity-auth
+              uri: ${IDENTITY_SERVICE_URL:http://localhost:8081}
+              predicates:
+                - Path=/api/auth/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@clientKeyResolver}"
+                    redis-rate-limiter.replenishRate: 5
+                    redis-rate-limiter.burstCapacity: 10
+                    redis-rate-limiter.requestedTokens: 1
+            - id: identity-users
+              uri: ${IDENTITY_SERVICE_URL:http://localhost:8081}
+              predicates:
+                - Path=/api/users/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@clientKeyResolver}"
+                    redis-rate-limiter.replenishRate: 20
+                    redis-rate-limiter.burstCapacity: 40
+                    redis-rate-limiter.requestedTokens: 1
+            - id: forum
+              uri: ${FORUM_SERVICE_URL:http://localhost:8082}
+              predicates:
+                - Path=/api/sections,/api/sections/**,/api/posts,/api/posts/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@clientKeyResolver}"
+                    redis-rate-limiter.replenishRate: 30
+                    redis-rate-limiter.burstCapacity: 60
+                    redis-rate-limiter.requestedTokens: 1
+          globalcors:
+            cors-configurations:
+              '[/**]':
+                allowed-origin-patterns: ${CORS_ALLOWED_ORIGINS:http://localhost:*}
+                allowed-methods: GET,POST,PUT,PATCH,DELETE,OPTIONS
+                allowed-headers: '*'
+                exposed-headers: X-Request-Id
+                allow-credentials: true
+                max-age: 3600
+
+app:
+  security:
+    jwt-secret: ${JWT_SECRET:change-this-development-secret-at-least-32-bytes}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when_authorized
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name:},%X{requestId:-}]"
