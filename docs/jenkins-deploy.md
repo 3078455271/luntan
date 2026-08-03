@@ -8,6 +8,8 @@
 
 服务器当前还有一套 `sub2api` 服务占用公网 `8080`，Nginx 占用 `80/443`。因此本项目不能继续使用公网 `8080`，生产环境使用 `18080` 作为本机回源端口，再由 Nginx 转发到它。
 
+本项目 Compose 同时启动 Nacos 2.5.1 单机实例：三个应用通过它注册服务、Gateway 使用 `lb://` 路由发现服务，并以 `spring.config.import` 读取 Nacos 中可选的同名 YAML 配置。当前服务器规格只适合单机 Nacos 加内置 Derby，适用于开发、测试和低流量部署；生产高可用应迁移到 MySQL 持久化和 Nacos 集群。
+
 这版 Jenkinsfile 已调整为在 Maven Docker 容器中构建，不要求宿主机安装 Java/Maven。Jenkins Agent 仍需要能执行 Docker CLI 和 `docker compose`，并能访问 Docker daemon。
 
 ## 推荐部署形态
@@ -94,6 +96,14 @@ sudo chmod 600 /opt/luntan/.env
 
 然后替换所有密码和 Token。这个 `.env` 已将 Gateway 设置为 `127.0.0.1:18080`，MySQL 和 Redis 也只绑定本机，不直接暴露到公网。
 
+Nacos 也只绑定 `127.0.0.1:8848`，不直接暴露公网。需要访问 Nacos 控制台时，在本机执行：
+
+```bash
+ssh -L 8848:127.0.0.1:8848 root@43.155.252.7
+```
+
+然后访问 `http://127.0.0.1:8848/nacos`。当前单机部署未开启 Nacos 鉴权，因为控制台仅经 SSH 隧道访问；不要把 `8848` 直接开放到公网。
+
 Jenkinsfile 默认从 `/opt/luntan/.env` 读取配置，不要求把 `.env` 放进 Git 或 Jenkins 工作区。如果 Jenkins Agent 使用 `jenkins` 用户，需要将该文件的读取权限授予它，例如：
 
 ```bash
@@ -132,7 +142,7 @@ location / {
 - `Verify Toolchain`：确认 Docker daemon 和 Compose 可用。
 - `Build`：用 `maven:3.9.9-eclipse-temurin-21` 容器执行 Maven，缓存写入工作区 `.m2`。
 - `Validate Compose`：检查 `/opt/luntan/.env` 并验证 Compose 配置，不打印包含密码的展开配置。
-- `Deploy`：执行 `docker compose up --build -d --remove-orphans`。
+- `Deploy`：执行 `docker compose up --build -d --remove-orphans`，依次启动 MySQL、Redis、Nacos 与三个应用服务。
 - `Health Check`：读取 `api-gateway` 容器健康状态，不依赖固定的宿主机端口。
 
 流水线参数：
@@ -147,7 +157,7 @@ location / {
 ```bash
 docker compose ps
 docker compose logs -f api-gateway identity-service forum-service
-docker compose logs --tail=200 mysql redis
+docker compose logs --tail=200 mysql redis nacos
 ```
 
 停止服务但保留数据：

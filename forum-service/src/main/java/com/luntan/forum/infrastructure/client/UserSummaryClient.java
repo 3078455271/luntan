@@ -10,6 +10,7 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.client.loadbalancer.LoadBalanced;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.ParameterizedTypeReference;
@@ -115,8 +116,15 @@ public class UserSummaryClient {
     @Configuration
     static class ClientConfiguration {
         @Bean
-        RestClient identityRestClient(@Value("${app.services.identity-url}") String identityUrl) {
-            return RestClient.builder().baseUrl(identityUrl).build();
+        @LoadBalanced
+        RestClient.Builder loadBalancedRestClientBuilder() {
+            return RestClient.builder();
+        }
+
+        @Bean
+        RestClient identityRestClient(@LoadBalanced RestClient.Builder restClientBuilder,
+                                      @Value("${app.services.identity-url}") String identityUrl) {
+            return restClientBuilder.baseUrl(identityUrl).build();
         }
     }
 }

@@ -5,6 +5,8 @@ server:
 spring:
   application:
     name: api-gateway
+  config:
+    import: optional:nacos:${spring.application.name}.yaml
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -14,17 +16,15 @@ spring:
   cloud:
     nacos:
       config:
-        enabled: false
-        import-check:
-          enabled: false
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
       discovery:
-        enabled: false
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}
     gateway:
       server:
         webflux:
           routes:
             - id: identity-auth
-              uri: ${IDENTITY_SERVICE_URL:http://localhost:8081}
+              uri: lb://identity-service
               predicates:
                 - Path=/api/auth/**
               filters:
@@ -35,7 +35,7 @@ spring:
                     redis-rate-limiter.burstCapacity: 10
                     redis-rate-limiter.requestedTokens: 1
             - id: identity-users
-              uri: ${IDENTITY_SERVICE_URL:http://localhost:8081}
+              uri: lb://identity-service
               predicates:
                 - Path=/api/users/**
               filters:
@@ -46,7 +46,7 @@ spring:
                     redis-rate-limiter.burstCapacity: 40
                     redis-rate-limiter.requestedTokens: 1
             - id: forum
-              uri: ${FORUM_SERVICE_URL:http://localhost:8082}
+              uri: lb://forum-service
               predicates:
                 - Path=/api/sections,/api/sections/**,/api/posts,/api/posts/**
               filters:

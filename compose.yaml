@@ -42,6 +42,30 @@ services:
     networks:
       - luntan-net
 
+  nacos:
+    image: nacos/nacos-server:v2.5.1
+    restart: unless-stopped
+    mem_limit: ${NACOS_MEMORY_LIMIT:-384m}
+    environment:
+      MODE: standalone
+      PREFER_HOST_MODE: hostname
+      NACOS_AUTH_ENABLE: "false"
+      JVM_XMS: 128m
+      JVM_XMX: 320m
+      JVM_XMN: 96m
+    ports:
+      - "${NACOS_BIND_ADDRESS:-127.0.0.1}:${NACOS_PORT:-8848}:8848"
+    volumes:
+      - nacos_data:/home/nacos/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8848/nacos/actuator/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+    networks:
+      - luntan-net
+
   identity-service:
     build:
       context: .
@@ -57,12 +81,15 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
+      NACOS_SERVER_ADDR: nacos:8848
       JWT_SECRET: ${JWT_SECRET:-change-this-development-secret-at-least-32-bytes}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-change-this-internal-service-token}
     depends_on:
       mysql:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      nacos:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8081'"]
@@ -88,15 +115,18 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
+      NACOS_SERVER_ADDR: nacos:8848
       JWT_SECRET: ${JWT_SECRET:-change-this-development-secret-at-least-32-bytes}
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-change-this-internal-service-token}
-      IDENTITY_SERVICE_URL: http://identity-service:8081
+      IDENTITY_SERVICE_URL: http://identity-service
     depends_on:
       mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
       identity-service:
+        condition: service_healthy
+      nacos:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8082'"]
@@ -119,9 +149,8 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_password}
+      NACOS_SERVER_ADDR: nacos:8848
       JWT_SECRET: ${JWT_SECRET:-change-this-development-secret-at-least-32-bytes}
-      IDENTITY_SERVICE_URL: http://identity-service:8081
-      FORUM_SERVICE_URL: http://forum-service:8082
     ports:
       - "${GATEWAY_BIND_ADDRESS:-127.0.0.1}:${GATEWAY_PORT:-8080}:8080"
     depends_on:
@@ -130,6 +159,8 @@ services:
       identity-service:
         condition: service_healthy
       forum-service:
+        condition: service_healthy
+      nacos:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/8080'"]
@@ -143,6 +174,7 @@ services:
 volumes:
   mysql_data:
   redis_data:
+  nacos_data:
 
 networks:
   luntan-net:
