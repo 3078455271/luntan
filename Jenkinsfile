@@ -35,7 +35,7 @@ pipeline {
                 sh '''
                     set -eu
                     mkdir -p "$WORKSPACE/.m2"
-                    if [ "${SKIP_TESTS}" = "true" ]; then
+                    if [ "${SKIP_TESTS:-false}" = "true" ]; then
                       MAVEN_GOAL="clean package -DskipTests"
                     else
                       MAVEN_GOAL="clean verify"
