@@ -60,6 +60,7 @@ pipeline {
                       echo "Missing $DEPLOY_ENV_FILE. Create it on the deployment host before deploying."
                       exit 1
                     }
+                    set +x
                     for variable in MYSQL_ROOT_PASSWORD IDENTITY_DB_PASSWORD FORUM_DB_PASSWORD REDIS_PASSWORD JWT_SECRET INTERNAL_SERVICE_TOKEN; do
                       value="$(awk -F= -v key="$variable" '$1 == key {sub(/^[^=]*=/, ""); print; exit}' "$DEPLOY_ENV_FILE")"
                       case "$value" in
@@ -69,6 +70,8 @@ pipeline {
                           ;;
                       esac
                     done
+                    unset value
+                    set -x
                     docker compose --env-file "$DEPLOY_ENV_FILE" config --quiet
                 '''
             }
@@ -81,7 +84,11 @@ pipeline {
             steps {
                 sh '''
                     set -eu
-                    docker compose --env-file "$DEPLOY_ENV_FILE" up --build -d --remove-orphans
+                    if ! docker compose --env-file "$DEPLOY_ENV_FILE" up --build -d --remove-orphans; then
+                      docker compose --env-file "$DEPLOY_ENV_FILE" ps || true
+                      docker compose --env-file "$DEPLOY_ENV_FILE" logs --tail=200 mysql redis nacos identity-service forum-service api-gateway || true
+                      exit 1
+                    fi
                     docker compose --env-file "$DEPLOY_ENV_FILE" ps
                 '''
             }
