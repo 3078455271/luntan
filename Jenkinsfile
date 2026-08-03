@@ -45,10 +45,9 @@ pipeline {
                       -v "$WORKSPACE:/workspace" \\
                       -v "$WORKSPACE/.m2:/m2" \\
                       -w /workspace \\
-                      -e MAVEN_CONFIG=/m2 \\
                       -e MAVEN_OPTS=-Xmx768m \\
                       "$MAVEN_IMAGE" \\
-                      sh -c "mvn -B $MAVEN_GOAL"
+                      sh -c "mvn -B -Dmaven.repo.local=/m2/repository $MAVEN_GOAL"
                 '''
             }
         }
